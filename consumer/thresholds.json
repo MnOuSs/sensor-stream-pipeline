@@ -1,0 +1,26 @@
+{
+  "devices": {
+    "00:0f:00:70:91:0a": {
+      "name": "Station 1 - Riverside Park",
+      "limits": {"co": 0.009254, "smoke": 0.033069, "lpg": 0.012019, "temperature": 20.1}
+    },
+    "1c:bf:ce:15:ec:4d": {
+      "name": "Station 2 - Market Square",
+      "limits": {"co": 0.005006, "smoke": 0.020572, "lpg": 0.007707, "temperature": 30.3}
+    },
+    "b8:27:eb:bf:9d:51": {
+      "name": "Station 3 - Industrial Estate",
+      "limits": {"co": 0.007189, "smoke": 0.027209, "lpg": 0.010014, "temperature": 23.6}
+    }
+  },
+  "default": {
+    "name": "Unregistered station",
+    "limits": {"co": 0.007518, "smoke": 0.028165, "lpg": 0.010342, "temperature": 29.6}
+  },
+  "labels": {
+    "co": "carbon monoxide",
+    "smoke": "smoke",
+    "lpg": "gas",
+    "temperature": "temperature"
+  }
+}
