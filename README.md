@@ -412,6 +412,62 @@ design constants rather than per-deployment tuning knobs, so they live in code
 Kafka exposes a second listener on `localhost:29092` for running scripts
 directly against the broker from the host, which is useful during development.
 
+## Operations and failure modes
+
+The Reliability section above covers what happens when *this pipeline's own
+processes* crash — a dead consumer, a restarted container. This section
+covers the layer above that: what happens when the infrastructure underneath
+it fails, and whose job it is to respond.
+
+**If MongoDB's disk fails.** As deployed here, MongoDB is a single instance
+writing to a single Docker volume. A disk failure on that volume loses
+everything — every stored reading and every alert episode, with nothing to
+recover from. This is a real gap in the current setup, not a solved problem,
+and it is the most serious item in Known Constraints below. Operating this
+for real would need MongoDB running as a replica set of at least three nodes,
+so one node's disk failing still leaves two complete copies, plus a scheduled
+backup to storage outside the cluster entirely. One property of the pipeline
+already helps here: because every write is an idempotent upsert with a
+deterministic ID, restoring a backup and replaying whatever Kafka still
+retains since that backup's timestamp is a safe recovery procedure — it lands
+on the same state as if nothing had failed, rather than creating duplicates.
+Kafka's own retention window would need to comfortably exceed the backup
+interval for that to work, which is a capacity-planning decision for whoever
+runs the platform, not something the pipeline code controls.
+
+**If the network drops — and which network.** "The network" means at least
+three different things here, and each has a different owner and a different
+failure story:
+
+- *Sensor to Kafka.* A physical sensor losing its connection to the broker is
+  outside this system's reach entirely — the pipeline cannot buffer a message
+  it never received. Connectivity monitoring (above) detects the symptom, a
+  station going quiet, but it cannot tell a broken network link apart from a
+  broken sensor: both look identical from here. A real deployment would need
+  the sensor hardware itself to buffer readings locally and forward them once
+  the link returns, which is a firmware/edge concern, not something this
+  repository's code can address.
+- *Kafka to MongoDB, or to the consumer.* This is exactly what the existing
+  architecture is built to absorb: the broker holds messages until the
+  consumer or the database is reachable again, as demonstrated by the
+  kill-and-restart test under Reliability. No new mechanism needed here —
+  this is the system doing what it was designed to do.
+- *Stored data to the planner dashboard or citizen app.* If those downstream
+  applications lose their own connection to MongoDB, that is an availability
+  problem for whoever operates them, not for this pipeline. This repository's
+  responsibility ends at the data being correctly stored and queryable; what
+  a consuming application does with a dropped connection is its own concern.
+
+**Who operates what.** No single team owns this whole picture, and being
+explicit about the boundary is itself part of a correct design:
+
+| Layer | What it is | Who would run it | What this repository covers |
+|---|---|---|---|
+| Field sensors | Physical hardware across the city | Facilities / IoT operations | Not at all — simulated by the producer replaying a dataset |
+| Kafka + MongoDB | The data platform | Platform / database operations | The configuration (`docker-compose.yml`), not day-to-day operation |
+| Producer + consumer | The ingestion and alerting logic | Data engineering | Fully — this is the code in this repository |
+| Planner and citizen apps | Downstream consumers of `readings` and `alert_episodes` | Separate application teams | Not at all — out of scope, as stated under What the system does |
+
 ## Repository layout
 
 ```
