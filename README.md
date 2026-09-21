@@ -129,6 +129,89 @@ data:
 
 Index creation runs on every consumer start and is idempotent.
 
+## What planners analyze
+
+The "urban planner" user story needs concrete examples to mean anything, and
+each example needs an honest answer to whether one week of three sensors can
+actually back it up.
+
+**Comparing locations — well supported.** The clearest, most defensible use of
+this data: are some parts of the city measurably worse than others?
+
+```javascript
+db.readings.aggregate([
+  { $group: {
+      _id: "$device",
+      avg_co: { $avg: "$co" },
+      avg_smoke: { $avg: "$smoke" },
+      avg_temperature: { $avg: "$temperature" },
+      readings: { $sum: 1 }
+  }}
+])
+```
+
+The three stations already show real, measurable separation — their
+99th-percentile temperatures alone span 20.1–30.3 °C — so this comparison is a
+genuine finding here, not just a demonstration of the query mechanism.
+
+**Incident history — well supported.** How often did a station exceed safe
+limits, and for how long?
+
+```javascript
+db.alert_episodes.aggregate([
+  { $match: { metric: { $ne: "connectivity" } } },
+  { $group: {
+      _id: { station: "$station", metric: "$metric" },
+      episode_count: { $sum: 1 },
+      minutes_over_threshold: { $sum: { $divide: ["$duration_seconds", 60] } },
+      worst_peak: { $max: "$peak_value" }
+  }}
+])
+```
+
+This runs directly against real output already produced by this pipeline — 47
+episodes with genuine start times, end times and peaks — so it answers a real
+question with real numbers, not a hypothetical one.
+
+**Trends over time — mechanically supported, but the data can't back a real
+conclusion.** A dashboard would plot a station's readings over time:
+
+```javascript
+db.readings.find(
+  { device: "b8:27:eb:bf:9d:51" },
+  { epoch: 1, temperature: 1, co: 1, _id: 0 }
+).sort({ epoch: 1 })
+```
+
+The query works and the (`device`, `epoch`) index makes it fast. But "trend"
+implies a direction sustained over time, and one week is a single sample —
+there is no way to tell a real seasonal or monthly trend from ordinary
+week-to-week noise. A live deployment accumulating months of data is what
+would make this query meaningful rather than merely functional.
+
+**Time-of-day patterns — weakly supported.** Whether pollution peaks at a
+particular hour is a natural planner question:
+
+```javascript
+db.readings.aggregate([
+  { $group: {
+      _id: { $hour: { $toDate: { $multiply: ["$epoch", 1000] } } },
+      avg_co: { $avg: "$co" }
+  }},
+  { $sort: { "_id": 1 } }
+])
+```
+
+One week gives exactly seven samples per hour-of-day bucket — enough to run
+the query, not enough to trust the result. A single unusual day would visibly
+distort every bucket it touches.
+
+**Sensor placement planning — not supported by this data at all.** Deciding
+where the next batch of sensors should go needs population density, traffic
+volume or land-use data alongside the readings. None of that exists in this
+dataset, and no query against `readings` alone can supply it. This is a
+genuine planner need a real deployment would have to source separately.
+
 ## Sample data
 
 The prototype uses the
